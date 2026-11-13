@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>2D Drift Racer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1a1a;
+      overflow: hidden;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: white;
+    }
+    canvas {
+      display: block;
+    }
+    #ui {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 15px 20px;
+      border-radius: 8px;
+      border-left: 4px solid #ff3b30;
+      pointer-events: none;
+    }
+    h1 { font-size: 18px; margin-bottom: 8px; letter-spacing: 1px; }
+    p { font-size: 14px; margin: 4px 0; color: #ddd; }
+    .controls {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 10px 15px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+
+<div id="ui">
+  <h1>DRIFT CIRCUIT</h1>
+  <p>Lap: <span id="lap">1</span></p>
+  <p>Time: <span id="time">0.00</span>s</p>
+  <p>Best: <span id="best">--</span></p>
+  <p>Speed: <span id="speed">0</span> MPH</p>
+</div>
+
+<div class="controls">
+  <b>W / Up:</b> Gas &nbsp;|&nbsp; <b>S / Down:</b> Brake/Reverse &nbsp;|&nbsp; <b>A / D or Left / Right:</b> Steer &nbsp;|&nbsp; <b>Space:</b> Handbrake Drift
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Input tracking
+const keys = {};
+window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+// Car object with real physics vectors
+const car = {
+  x: 1000,
+  y: 450,
+  vx: 0,
+  vy: 0,
+  angle: 0,
+  width: 44,
+  height: 22,
+  accel: 0.35,
+  maxSpeed: 13,
+  turnSpeed: 0.055,
+  grip: 0.92,     // Lower = more slide/drift
+  friction: 0.985 // Natural rolling resistance
+};
+
+// Track geometry (Oval circuit centered at 1000, 1000)
+const track = {
+  cx: 1000,
+  cy: 1000,
+  rx: 750,
+  ry: 550,
+  roadWidth: 220
+};
+
+// Tire skid marks array
+const skids = [];
+
+// Lap & timing state
+let lap = 1;
+let startTime = Date.now();
+let bestTime = null;
+let passedCheckpoint = false;
+
+function update() {
+  const up = keys['KeyW'] || keys['ArrowUp'];
+  const down = keys['KeyS'] || keys['ArrowDown'];
+  const left = keys['KeyA'] || keys['ArrowLeft'];
+  const right = keys['KeyD'] || keys['ArrowRight'];
+  const handbrake = keys['Space'];
+
+  // Forward direction vector
+  const forwardX = Math.cos(car.angle);
+  const forwardY = Math.sin(car.angle);
+
+  // Calculate current forward velocity vs sideways (drift) velocity
+  let forwardSpeed = car.vx * forwardX + car.vy * forwardY;
+  let rightX = -forwardY;
+  let rightY = forwardX;
+  let lateralSpeed = car.vx * rightX + car.vy * rightY;
+
+  // Acceleration & Braking
+  if (up) {
+    car.vx += forwardX * car.accel;
+    car.vy += forwardY * car.accel;
+  }
+  if (down) {
+    car.vx -= forwardX * (car.accel * 0.7);
+    car.vy -= forwardY * (car.accel * 0.7);
+  }
+
+  // Steering (only turns when moving, reverses steering when backing up)
+  const totalSpeed = Math.hypot(car.vx, car.vy);
+  if (totalSpeed > 0.3) {
+    const dir = forwardSpeed >= 0 ? 1 : -1;
+    const turnFactor = Math.min(totalSpeed / 4, 1); // Smoother turning at low speeds
+    if (left) car.angle -= car.turnSpeed * turnFactor * dir;
+    if (right) car.angle += car.turnSpeed * turnFactor * dir;
+  }
+
+  // Drift physics: reduce sideways velocity based on grip (handbrake lowers grip)
+  const currentGrip = handbrake ? 0.96 : car.grip;
+  lateralSpeed *= currentGrip;
+
+  // Reconstruct velocity from forward + reduced lateral drift
+  car.vx = forwardX * forwardSpeed + rightX * lateralSpeed;
+  car.vy = forwardY * forwardSpeed + rightY * lateralSpeed;
+
+  // Apply friction & speed cap
+  car.vx *= car.friction;
+  car.vy *= car.friction;
+
+  // Check if car is off-road (on the grass)
+  const normDist = Math.hypot((car.x - track.cx) / track.rx, (car.y - track.cy) / track.ry);
+  const innerLimit = 1 - (track.roadWidth / 2) / 650;
+  const outerLimit = 1 + (track.roadWidth / 2) / 650;
+  const offRoad = normDist < innerLimit || normDist > outerLimit;
+
+  if (offRoad) {
+    car.vx *= 0.93; // Grass slows you down
+    car.vy *= 0.93;
+  }
+
+  // Move car
+  car.x += car.vx;
+  car.y += car.vy;
+
+  // Leave tire skid marks when drifting hard or handbraking
+  if ((Math.abs(lateralSpeed) > 2.2 || (handbrake && totalSpeed > 3)) && !offRoad) {
+    const rearX = car.x - forwardX * 16;
+    const rearY = car.y - forwardY * 16;
+    skids.push({
+      x1: rearX + rightX * 8, y1: rearY + rightY * 8,
+      x2: rearX - rightX * 8, y2: rearY - rightY * 8,
+      alpha: 0.5
+    });
+    if (skids.length > 400) skids.shift();
+  }
+
+  // Lap & Checkpoint Logic
+  // Checkpoint is at bottom of track (y > 1400)
+  if (car.y > track.cy + 300 && Math.abs(car.x - track.cx) < 150) {
+    passedCheckpoint = true;
+  }
+  // Finish line is at top of track (y < 600, x crossing 1000)
+  if (passedCheckpoint && car.y < track.cy - 300 && Math.abs(car.x - track.cx) < 80) {
+    passedCheckpoint = false;
+    const lapTime = ((Date.now() - startTime) / 1000).toFixed(2);
+    if (!bestTime || parseFloat(lapTime) < parseFloat(bestTime)) {
+      bestTime = lapTime;
+      document.getElementById('best').innerText = bestTime + 's';
+    }
+    lap++;
+    startTime = Date.now();
+    document.getElementById('lap').innerText = lap;
+  }
+
+  // Update HUD
+  document.getElementById('time').innerText = ((Date.now() - startTime) / 1000).toFixed(2);
+  document.getElementById('speed').innerText = Math.round(totalSpeed * 11);
+}
+
+function drawTrack() {
+  // Grass background grid so you feel the sense of speed
+  ctx.fillStyle = '#2d5a27';
+  ctx.fillRect(0, 0, 2000, 2000);
+
+  ctx.strokeStyle = '#264d21';
+  ctx.lineWidth = 2;
+  for (let i = 0; i <= 2000; i += 100) {
+    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 2000); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(2000, i); ctx.stroke();
+  }
+
+  // Outer red/white rumble strip
+  ctx.beginPath();
+  ctx.ellipse(track.cx, track.cy, track.rx, track.ry, 0, 0, Math.PI * 2);
+  ctx.lineWidth = track.roadWidth + 24;
+  ctx.strokeStyle = '#d93829';
+  ctx.stroke();
+
+  ctx.setLineDash([30, 30]);
+  ctx.strokeStyle = '#ffffff';
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Asphalt road
+  ctx.beginPath();
+  ctx.ellipse(track.cx, track.cy, track.rx, track.ry, 0, 0, Math.PI * 2);
+  ctx.lineWidth = track.roadWidth;
+  ctx.strokeStyle = '#33363b';
+  ctx.stroke();
+
+  // Center dashed line
+  ctx.beginPath();
+  ctx.ellipse(track.cx, track.cy, track.rx, track.ry, 0, 0, Math.PI * 2);
+  ctx.lineWidth = 4;
+  ctx.setLineDash([25, 25]);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Start/Finish line
+  const finishY = track.cy - track.ry;
+  ctx.fillStyle = '#ffffff';
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 11; col++) {
+      if ((row + col) % 2 === 0) {
+        ctx.fillRect(track.cx - 10 + row * 10, finishY - 110 + col * 20, 10, 20);
+      }
+    }
+  }
+}
+
+function drawCar() {
+  ctx.save();
+  ctx.translate(car.x, car.y);
+  ctx.rotate(car.angle);
+
+  // Drop shadow
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+  ctx.fillRect(-car.width / 2 + 4, -car.height / 2 + 4, car.width, car.height);
+
+  // Tires
+  ctx.fillStyle = '#111';
+  ctx.fillRect(-16, -13, 10, 4);
+  ctx.fillRect(8, -13, 10, 4);
+  ctx.fillRect(-16, 9, 10, 4);
+  ctx.fillRect(8, 9, 10, 4);
+
+  // Car Body
+  ctx.fillStyle = '#ff3b30';
+  ctx.beginPath();
+  ctx.roundRect(-car.width / 2, -car.height / 2, car.width, car.height, 5);
+  ctx.fill();
+
+  // Windshield & Rear Window
+  ctx.fillStyle = '#1c252c';
+  ctx.fillRect(4, -8, 9, 16);
+  ctx.fillRect(-14, -7, 6, 14);
+
+  // Racing stripe
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(-car.width / 2, -2, car.width, 4);
+
+  // Headlights
+  ctx.fillStyle = '#fff59d';
+  ctx.fillRect(car.width / 2 - 2, -8, 2, 4);
+  ctx.fillRect(car.width / 2 - 2, 4, 2, 4);
+
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.save();
+  // Camera follows the car smoothly centered on screen
+  ctx.translate(canvas.width / 2 - car.x, canvas.height / 2 - car.y);
+
+  drawTrack();
+
+  // Draw skid marks
+  ctx.fillStyle = 'rgba(15, 15, 15, 0.45)';
+  for (let s of skids) {
+    ctx.fillRect(s.x1, s.y1, 4, 4);
+    ctx.fillRect(s.x2, s.y2, 4, 4);
+  }
+
+  drawCar();
+  ctx.restore();
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
