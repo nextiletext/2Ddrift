@@ -11,7 +11,7 @@
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       color: white;
     }
-    canvas { display: block; }
+    canvas { display: block; outline: none; }
     #ui {
       position: absolute;
       top: 20px;
@@ -50,7 +50,7 @@
   <b>W / Up:</b> Gas &nbsp;|&nbsp; <b>S / Down:</b> Brake/Reverse &nbsp;|&nbsp; <b>A / D or Left / Right:</b> Steer &nbsp;|&nbsp; <b>Space:</b> Handbrake Drift
 </div>
 
-<canvas id="game"></canvas>
+<canvas id="game" tabindex="1"></canvas>
 
 <script>
 const canvas = document.getElementById('game');
@@ -62,18 +62,24 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 resize();
+canvas.focus();
 
-// Input tracking with preventDefault so arrow keys / space don't scroll the page
+// Bulletproof input tracking supporting both e.code and e.key
 const keys = {};
 window.addEventListener('keydown', e => {
-  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyW', 'KeyS', 'KeyA', 'KeyD'].includes(e.code) || [' ', 'w', 's', 'a', 'd', 'W', 'S', 'A', 'D'].includes(e.key)) {
     e.preventDefault();
   }
   keys[e.code] = true;
+  keys[e.key.toLowerCase()] = true;
 });
-window.addEventListener('keyup', e => keys[e.code] = false);
 
-// Car object with real physics vectors
+window.addEventListener('keyup', e => {
+  keys[e.code] = false;
+  keys[e.key.toLowerCase()] = false;
+});
+
+// Car object
 const car = {
   x: 1000,
   y: 450,
@@ -82,9 +88,9 @@ const car = {
   angle: 0,
   width: 44,
   height: 22,
-  accel: 0.35,
-  maxSpeed: 13,
-  turnSpeed: 0.06,
+  accel: 0.4,
+  maxSpeed: 14,
+  turnSpeed: 0.065,
   grip: 0.92,
   friction: 0.985
 };
@@ -105,11 +111,11 @@ let bestTime = null;
 let passedCheckpoint = false;
 
 function update() {
-  const up = keys['KeyW'] || keys['ArrowUp'];
-  const down = keys['KeyS'] || keys['ArrowDown'];
-  const left = keys['KeyA'] || keys['ArrowLeft'];
-  const right = keys['KeyD'] || keys['ArrowRight'];
-  const handbrake = keys['Space'];
+  const up = keys['KeyW'] || keys['ArrowUp'] || keys['w'];
+  const down = keys['KeyS'] || keys['ArrowDown'] || keys['s'];
+  const left = keys['KeyA'] || keys['ArrowLeft'] || keys['a'];
+  const right = keys['KeyD'] || keys['ArrowRight'] || keys['d'];
+  const handbrake = keys['Space'] || keys[' '];
 
   const forwardX = Math.cos(car.angle);
   const forwardY = Math.sin(car.angle);
@@ -121,24 +127,25 @@ function update() {
 
   // Acceleration & Braking
   if (up) {
-    car.vx += forwardX * car.accel;
-    car.vy += forwardY * car.accel;
+    forwardSpeed += car.accel;
+    if (forwardSpeed > car.maxSpeed) forwardSpeed = car.maxSpeed;
   }
   if (down) {
-    car.vx -= forwardX * (car.accel * 0.7);
-    car.vy -= forwardY * (car.accel * 0.7);
+    forwardSpeed -= car.accel * 0.7;
+    if (forwardSpeed < -car.maxSpeed * 0.4) forwardSpeed = -car.maxSpeed * 0.4;
   }
 
-  // Steering (Fixed: allows turning even at low/zero speed)
+  // Steering
   const totalSpeed = Math.hypot(car.vx, car.vy);
   const dir = forwardSpeed >= 0 ? 1 : -1;
   if (left) car.angle -= car.turnSpeed * dir;
   if (right) car.angle += car.turnSpeed * dir;
 
   // Drift physics
-  const currentGrip = handbrake ? 0.95 : car.grip;
+  const currentGrip = handbrake ? 0.94 : car.grip;
   lateralSpeed *= currentGrip;
 
+  // Reconstruct velocity
   car.vx = forwardX * forwardSpeed + rightX * lateralSpeed;
   car.vy = forwardY * forwardSpeed + rightY * lateralSpeed;
 
@@ -152,15 +159,15 @@ function update() {
   const offRoad = normDist < innerLimit || normDist > outerLimit;
 
   if (offRoad) {
-    car.vx *= 0.93;
-    car.vy *= 0.93;
+    car.vx *= 0.92;
+    car.vy *= 0.92;
   }
 
   car.x += car.vx;
   car.y += car.vy;
 
   // Skid marks
-  if ((Math.abs(lateralSpeed) > 2.2 || (handbrake && totalSpeed > 2)) && !offRoad) {
+  if ((Math.abs(lateralSpeed) > 2.0 || (handbrake && totalSpeed > 2)) && !offRoad) {
     const rearX = car.x - forwardX * 16;
     const rearY = car.y - forwardY * 16;
     skids.push({
