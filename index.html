@@ -11,9 +11,7 @@
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       color: white;
     }
-    canvas {
-      display: block;
-    }
+    canvas { display: block; }
     #ui {
       position: absolute;
       top: 20px;
@@ -65,9 +63,14 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// Input tracking
+// Input tracking with preventDefault so arrow keys / space don't scroll the page
 const keys = {};
-window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keydown', e => {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+    e.preventDefault();
+  }
+  keys[e.code] = true;
+});
 window.addEventListener('keyup', e => keys[e.code] = false);
 
 // Car object with real physics vectors
@@ -81,12 +84,12 @@ const car = {
   height: 22,
   accel: 0.35,
   maxSpeed: 13,
-  turnSpeed: 0.055,
-  grip: 0.92,     // Lower = more slide/drift
-  friction: 0.985 // Natural rolling resistance
+  turnSpeed: 0.06,
+  grip: 0.92,
+  friction: 0.985
 };
 
-// Track geometry (Oval circuit centered at 1000, 1000)
+// Track geometry
 const track = {
   cx: 1000,
   cy: 1000,
@@ -95,10 +98,7 @@ const track = {
   roadWidth: 220
 };
 
-// Tire skid marks array
 const skids = [];
-
-// Lap & timing state
 let lap = 1;
 let startTime = Date.now();
 let bestTime = null;
@@ -111,11 +111,9 @@ function update() {
   const right = keys['KeyD'] || keys['ArrowRight'];
   const handbrake = keys['Space'];
 
-  // Forward direction vector
   const forwardX = Math.cos(car.angle);
   const forwardY = Math.sin(car.angle);
 
-  // Calculate current forward velocity vs sideways (drift) velocity
   let forwardSpeed = car.vx * forwardX + car.vy * forwardY;
   let rightX = -forwardY;
   let rightY = forwardX;
@@ -131,60 +129,51 @@ function update() {
     car.vy -= forwardY * (car.accel * 0.7);
   }
 
-  // Steering (only turns when moving, reverses steering when backing up)
+  // Steering (Fixed: allows turning even at low/zero speed)
   const totalSpeed = Math.hypot(car.vx, car.vy);
-  if (totalSpeed > 0.3) {
-    const dir = forwardSpeed >= 0 ? 1 : -1;
-    const turnFactor = Math.min(totalSpeed / 4, 1); // Smoother turning at low speeds
-    if (left) car.angle -= car.turnSpeed * turnFactor * dir;
-    if (right) car.angle += car.turnSpeed * turnFactor * dir;
-  }
+  const dir = forwardSpeed >= 0 ? 1 : -1;
+  if (left) car.angle -= car.turnSpeed * dir;
+  if (right) car.angle += car.turnSpeed * dir;
 
-  // Drift physics: reduce sideways velocity based on grip (handbrake lowers grip)
-  const currentGrip = handbrake ? 0.96 : car.grip;
+  // Drift physics
+  const currentGrip = handbrake ? 0.95 : car.grip;
   lateralSpeed *= currentGrip;
 
-  // Reconstruct velocity from forward + reduced lateral drift
   car.vx = forwardX * forwardSpeed + rightX * lateralSpeed;
   car.vy = forwardY * forwardSpeed + rightY * lateralSpeed;
 
-  // Apply friction & speed cap
   car.vx *= car.friction;
   car.vy *= car.friction;
 
-  // Check if car is off-road (on the grass)
+  // Off-road check
   const normDist = Math.hypot((car.x - track.cx) / track.rx, (car.y - track.cy) / track.ry);
   const innerLimit = 1 - (track.roadWidth / 2) / 650;
   const outerLimit = 1 + (track.roadWidth / 2) / 650;
   const offRoad = normDist < innerLimit || normDist > outerLimit;
 
   if (offRoad) {
-    car.vx *= 0.93; // Grass slows you down
+    car.vx *= 0.93;
     car.vy *= 0.93;
   }
 
-  // Move car
   car.x += car.vx;
   car.y += car.vy;
 
-  // Leave tire skid marks when drifting hard or handbraking
-  if ((Math.abs(lateralSpeed) > 2.2 || (handbrake && totalSpeed > 3)) && !offRoad) {
+  // Skid marks
+  if ((Math.abs(lateralSpeed) > 2.2 || (handbrake && totalSpeed > 2)) && !offRoad) {
     const rearX = car.x - forwardX * 16;
     const rearY = car.y - forwardY * 16;
     skids.push({
       x1: rearX + rightX * 8, y1: rearY + rightY * 8,
-      x2: rearX - rightX * 8, y2: rearY - rightY * 8,
-      alpha: 0.5
+      x2: rearX - rightX * 8, y2: rearY - rightY * 8
     });
     if (skids.length > 400) skids.shift();
   }
 
-  // Lap & Checkpoint Logic
-  // Checkpoint is at bottom of track (y > 1400)
+  // Lap logic
   if (car.y > track.cy + 300 && Math.abs(car.x - track.cx) < 150) {
     passedCheckpoint = true;
   }
-  // Finish line is at top of track (y < 600, x crossing 1000)
   if (passedCheckpoint && car.y < track.cy - 300 && Math.abs(car.x - track.cx) < 80) {
     passedCheckpoint = false;
     const lapTime = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -197,13 +186,11 @@ function update() {
     document.getElementById('lap').innerText = lap;
   }
 
-  // Update HUD
   document.getElementById('time').innerText = ((Date.now() - startTime) / 1000).toFixed(2);
   document.getElementById('speed').innerText = Math.round(totalSpeed * 11);
 }
 
 function drawTrack() {
-  // Grass background grid so you feel the sense of speed
   ctx.fillStyle = '#2d5a27';
   ctx.fillRect(0, 0, 2000, 2000);
 
@@ -214,7 +201,6 @@ function drawTrack() {
     ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(2000, i); ctx.stroke();
   }
 
-  // Outer red/white rumble strip
   ctx.beginPath();
   ctx.ellipse(track.cx, track.cy, track.rx, track.ry, 0, 0, Math.PI * 2);
   ctx.lineWidth = track.roadWidth + 24;
@@ -226,14 +212,12 @@ function drawTrack() {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Asphalt road
   ctx.beginPath();
   ctx.ellipse(track.cx, track.cy, track.rx, track.ry, 0, 0, Math.PI * 2);
   ctx.lineWidth = track.roadWidth;
   ctx.strokeStyle = '#33363b';
   ctx.stroke();
 
-  // Center dashed line
   ctx.beginPath();
   ctx.ellipse(track.cx, track.cy, track.rx, track.ry, 0, 0, Math.PI * 2);
   ctx.lineWidth = 4;
@@ -242,7 +226,6 @@ function drawTrack() {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Start/Finish line
   const finishY = track.cy - track.ry;
   ctx.fillStyle = '#ffffff';
   for (let row = 0; row < 2; row++) {
@@ -259,33 +242,27 @@ function drawCar() {
   ctx.translate(car.x, car.y);
   ctx.rotate(car.angle);
 
-  // Drop shadow
   ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
   ctx.fillRect(-car.width / 2 + 4, -car.height / 2 + 4, car.width, car.height);
 
-  // Tires
   ctx.fillStyle = '#111';
   ctx.fillRect(-16, -13, 10, 4);
   ctx.fillRect(8, -13, 10, 4);
   ctx.fillRect(-16, 9, 10, 4);
   ctx.fillRect(8, 9, 10, 4);
 
-  // Car Body
   ctx.fillStyle = '#ff3b30';
   ctx.beginPath();
   ctx.roundRect(-car.width / 2, -car.height / 2, car.width, car.height, 5);
   ctx.fill();
 
-  // Windshield & Rear Window
   ctx.fillStyle = '#1c252c';
   ctx.fillRect(4, -8, 9, 16);
   ctx.fillRect(-14, -7, 6, 14);
 
-  // Racing stripe
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(-car.width / 2, -2, car.width, 4);
 
-  // Headlights
   ctx.fillStyle = '#fff59d';
   ctx.fillRect(car.width / 2 - 2, -8, 2, 4);
   ctx.fillRect(car.width / 2 - 2, 4, 2, 4);
@@ -297,12 +274,10 @@ function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   ctx.save();
-  // Camera follows the car smoothly centered on screen
   ctx.translate(canvas.width / 2 - car.x, canvas.height / 2 - car.y);
 
   drawTrack();
 
-  // Draw skid marks
   ctx.fillStyle = 'rgba(15, 15, 15, 0.45)';
   for (let s of skids) {
     ctx.fillRect(s.x1, s.y1, 4, 4);
