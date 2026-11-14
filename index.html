@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>2D Drift Racer</title>
+  <title>2D Drift Racer - Multiple Tracks</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -16,14 +16,22 @@
       position: absolute;
       top: 20px;
       left: 20px;
-      background: rgba(0, 0, 0, 0.7);
+      background: rgba(0, 0, 0, 0.75);
       padding: 15px 20px;
       border-radius: 8px;
       border-left: 4px solid #ff3b30;
-      pointer-events: none;
     }
     h1 { font-size: 18px; margin-bottom: 8px; letter-spacing: 1px; }
-    p { font-size: 14px; margin: 4px 0; color: #ddd; }
+    p { font-size: 14px; margin: 5px 0; color: #ddd; }
+    select {
+      background: #222;
+      color: white;
+      border: 1px solid #555;
+      padding: 3px 6px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+    }
     .controls {
       position: absolute;
       bottom: 20px;
@@ -33,6 +41,7 @@
       border-radius: 6px;
       font-size: 13px;
       color: #aaa;
+      pointer-events: none;
     }
   </style>
 </head>
@@ -40,6 +49,13 @@
 
 <div id="ui">
   <h1>DRIFT CIRCUIT</h1>
+  <p>Track: 
+    <select id="trackSelect">
+      <option value="0">Oval Circuit (Balanced)</option>
+      <option value="1">Tight Hairpin (Technical)</option>
+      <option value="2">Grand Prix Ring (Wide & Fast)</option>
+    </select>
+  </p>
   <p>Lap: <span id="lap">1</span></p>
   <p>Time: <span id="time">0.00</span>s</p>
   <p>Best: <span id="best">--</span></p>
@@ -64,7 +80,7 @@ window.addEventListener('resize', resize);
 resize();
 canvas.focus();
 
-// Bulletproof input tracking supporting both e.code and e.key
+// Input tracking
 const keys = {};
 window.addEventListener('keydown', e => {
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyW', 'KeyS', 'KeyA', 'KeyD'].includes(e.code) || [' ', 'w', 's', 'a', 'd', 'W', 'S', 'A', 'D'].includes(e.key)) {
@@ -79,10 +95,20 @@ window.addEventListener('keyup', e => {
   keys[e.key.toLowerCase()] = false;
 });
 
+// Track definitions
+const trackList = [
+  { name: "Oval Circuit", cx: 1000, cy: 1000, rx: 750, ry: 550, roadWidth: 220, startX: 1000, startY: 450 },
+  { name: "Tight Hairpin", cx: 1000, cy: 1000, rx: 850, ry: 380, roadWidth: 150, startX: 1000, startY: 620 },
+  { name: "Grand Prix Ring", cx: 1000, cy: 1000, rx: 650, ry: 650, roadWidth: 240, startX: 1000, startY: 350 }
+];
+
+let currentTrackIndex = 0;
+let track = trackList[currentTrackIndex];
+
 // Car object
 const car = {
-  x: 1000,
-  y: 450,
+  x: track.startX,
+  y: track.startY,
   vx: 0,
   vy: 0,
   angle: 0,
@@ -95,20 +121,35 @@ const car = {
   friction: 0.985
 };
 
-// Track geometry
-const track = {
-  cx: 1000,
-  cy: 1000,
-  rx: 750,
-  ry: 550,
-  roadWidth: 220
-};
-
 const skids = [];
 let lap = 1;
 let startTime = Date.now();
 let bestTime = null;
 let passedCheckpoint = false;
+
+// Track selection dropdown handler
+const trackSelect = document.getElementById('trackSelect');
+trackSelect.addEventListener('change', (e) => {
+  currentTrackIndex = parseInt(e.target.value);
+  track = trackList[currentTrackIndex];
+  
+  // Reset car position and physics
+  car.x = track.startX;
+  car.y = track.startY;
+  car.vx = 0;
+  car.vy = 0;
+  car.angle = 0;
+  
+  // Reset lap stats
+  lap = 1;
+  document.getElementById('lap').innerText = lap;
+  startTime = Date.now();
+  bestTime = null;
+  document.getElementById('best').innerText = '--';
+  skids.length = 0;
+  passedCheckpoint = false;
+  canvas.focus();
+});
 
 function update() {
   const up = keys['KeyW'] || keys['ArrowUp'] || keys['w'];
@@ -152,10 +193,11 @@ function update() {
   car.vx *= car.friction;
   car.vy *= car.friction;
 
-  // Off-road check
+  // Off-road check based on active track dimensions
   const normDist = Math.hypot((car.x - track.cx) / track.rx, (car.y - track.cy) / track.ry);
-  const innerLimit = 1 - (track.roadWidth / 2) / 650;
-  const outerLimit = 1 + (track.roadWidth / 2) / 650;
+  const trackRadiusAverage = (track.rx + track.ry) / 2;
+  const innerLimit = 1 - (track.roadWidth / 2) / trackRadiusAverage;
+  const outerLimit = 1 + (track.roadWidth / 2) / trackRadiusAverage;
   const offRoad = normDist < innerLimit || normDist > outerLimit;
 
   if (offRoad) {
@@ -177,11 +219,11 @@ function update() {
     if (skids.length > 400) skids.shift();
   }
 
-  // Lap logic
-  if (car.y > track.cy + 300 && Math.abs(car.x - track.cx) < 150) {
+  // Lap logic (Checkpoint at bottom, finish line at top)
+  if (car.y > track.cy + (track.ry * 0.5) && Math.abs(car.x - track.cx) < track.rx * 0.3) {
     passedCheckpoint = true;
   }
-  if (passedCheckpoint && car.y < track.cy - 300 && Math.abs(car.x - track.cx) < 80) {
+  if (passedCheckpoint && car.y < track.cy - (track.ry * 0.5) && Math.abs(car.x - track.cx) < track.rx * 0.2) {
     passedCheckpoint = false;
     const lapTime = ((Date.now() - startTime) / 1000).toFixed(2);
     if (!bestTime || parseFloat(lapTime) < parseFloat(bestTime)) {
@@ -208,6 +250,7 @@ function drawTrack() {
     ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(2000, i); ctx.stroke();
   }
 
+  // Outer rumble strip
   ctx.beginPath();
   ctx.ellipse(track.cx, track.cy, track.rx, track.ry, 0, 0, Math.PI * 2);
   ctx.lineWidth = track.roadWidth + 24;
@@ -219,12 +262,14 @@ function drawTrack() {
   ctx.stroke();
   ctx.setLineDash([]);
 
+  // Asphalt road
   ctx.beginPath();
   ctx.ellipse(track.cx, track.cy, track.rx, track.ry, 0, 0, Math.PI * 2);
   ctx.lineWidth = track.roadWidth;
   ctx.strokeStyle = '#33363b';
   ctx.stroke();
 
+  // Center dashed line
   ctx.beginPath();
   ctx.ellipse(track.cx, track.cy, track.rx, track.ry, 0, 0, Math.PI * 2);
   ctx.lineWidth = 4;
@@ -233,12 +278,13 @@ function drawTrack() {
   ctx.stroke();
   ctx.setLineDash([]);
 
+  // Start/Finish line
   const finishY = track.cy - track.ry;
   ctx.fillStyle = '#ffffff';
   for (let row = 0; row < 2; row++) {
     for (let col = 0; col < 11; col++) {
       if ((row + col) % 2 === 0) {
-        ctx.fillRect(track.cx - 10 + row * 10, finishY - 110 + col * 20, 10, 20);
+        ctx.fillRect(track.cx - 10 + row * 10, finishY - (track.roadWidth / 2) + col * 20, 10, 20);
       }
     }
   }
