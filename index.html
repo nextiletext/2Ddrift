@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>2D Drift Racer - Multiple Tracks</title>
+  <title>2D Grand Prix Drift Racer - 10 Massive Tracks</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -16,31 +16,33 @@
       position: absolute;
       top: 20px;
       left: 20px;
-      background: rgba(0, 0, 0, 0.75);
+      background: rgba(0, 0, 0, 0.8);
       padding: 15px 20px;
       border-radius: 8px;
       border-left: 4px solid #ff3b30;
+      z-index: 10;
     }
     h1 { font-size: 18px; margin-bottom: 8px; letter-spacing: 1px; }
     p { font-size: 14px; margin: 5px 0; color: #ddd; }
-    select {
+    select, button {
       background: #222;
       color: white;
       border: 1px solid #555;
-      padding: 3px 6px;
+      padding: 4px 8px;
       border-radius: 4px;
       font-size: 13px;
       cursor: pointer;
     }
+    button:hover { background: #333; }
     .controls {
       position: absolute;
       bottom: 20px;
       left: 20px;
-      background: rgba(0, 0, 0, 0.6);
+      background: rgba(0, 0, 0, 0.7);
       padding: 10px 15px;
       border-radius: 6px;
       font-size: 13px;
-      color: #aaa;
+      color: #ccc;
       pointer-events: none;
     }
   </style>
@@ -48,22 +50,29 @@
 <body>
 
 <div id="ui">
-  <h1>DRIFT CIRCUIT</h1>
-  <p>Track: 
+  <h1>GRAND PRIX DRIFT</h1>
+  <p>Circuit: 
     <select id="trackSelect">
-      <option value="0">Oval Circuit (Balanced)</option>
-      <option value="1">Tight Hairpin (Technical)</option>
-      <option value="2">Grand Prix Ring (Wide & Fast)</option>
+      <option value="0">1. Silverstone Sweep (Fast GP)</option>
+      <option value="1">2. Monza Temple of Speed</option>
+      <option value="2">3. Suzuka Figure-8 Crossover</option>
+      <option value="3">4. Monaco Harbor Tight</option>
+      <option value="4">5. Spa-Francorchamps Forest</option>
+      <option value="5">6. Interlagos Technical Twist</option>
+      <option value="6">7. Nürburgring Endurance Loop</option>
+      <option value="7">8. Daytona Tri-Oval Superspeedway</option>
+      <option value="8">9. Laguna Seca Corkscrew</option>
+      <option value="9">10. Abu Dhabi Yas Marina</option>
     </select>
   </p>
-  <p>Lap: <span id="lap">1</span></p>
+  <p>Lap: <span id="lap">1</span> &nbsp;|&nbsp; <button id="resetBtn">Reset Car (R)</button></p>
   <p>Time: <span id="time">0.00</span>s</p>
   <p>Best: <span id="best">--</span></p>
   <p>Speed: <span id="speed">0</span> MPH</p>
 </div>
 
 <div class="controls">
-  <b>W / Up:</b> Gas &nbsp;|&nbsp; <b>S / Down:</b> Brake/Reverse &nbsp;|&nbsp; <b>A / D or Left / Right:</b> Steer &nbsp;|&nbsp; <b>Space:</b> Handbrake Drift
+  <b>W / Up:</b> Gas &nbsp;|&nbsp; <b>S / Down:</b> Brake/Reverse &nbsp;|&nbsp; <b>A / D or Left / Right:</b> Steer &nbsp;|&nbsp; <b>Space:</b> Handbrake Drift &nbsp;|&nbsp; <b>R:</b> Reset to Track
 </div>
 
 <canvas id="game" tabindex="1"></canvas>
@@ -83,11 +92,13 @@ canvas.focus();
 // Input tracking
 const keys = {};
 window.addEventListener('keydown', e => {
-  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyW', 'KeyS', 'KeyA', 'KeyD'].includes(e.code) || [' ', 'w', 's', 'a', 'd', 'W', 'S', 'A', 'D'].includes(e.key)) {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyR'].includes(e.code) || 
+      [' ', 'w', 's', 'a', 'd', 'W', 'S', 'A', 'D', 'r', 'R'].includes(e.key)) {
     e.preventDefault();
   }
   keys[e.code] = true;
   keys[e.key.toLowerCase()] = true;
+  if (e.code === 'KeyR' || e.key.toLowerCase() === 'r') resetCarToTrack();
 });
 
 window.addEventListener('keyup', e => {
@@ -95,61 +106,211 @@ window.addEventListener('keyup', e => {
   keys[e.key.toLowerCase()] = false;
 });
 
-// Track definitions
-const trackList = [
-  { name: "Oval Circuit", cx: 1000, cy: 1000, rx: 750, ry: 550, roadWidth: 220, startX: 1000, startY: 450 },
-  { name: "Tight Hairpin", cx: 1000, cy: 1000, rx: 850, ry: 380, roadWidth: 150, startX: 1000, startY: 620 },
-  { name: "Grand Prix Ring", cx: 1000, cy: 1000, rx: 650, ry: 650, roadWidth: 240, startX: 1000, startY: 350 }
+// 10 Massive Grand Prix Circuits (4500 x 4500 world coordinates)
+const rawTracks = [
+  {
+    name: "Silverstone Sweep",
+    roadWidth: 230,
+    points: [
+      {x: 1200, y: 700}, {x: 2400, y: 650}, {x: 3600, y: 800}, {x: 3900, y: 1500},
+      {x: 3400, y: 2100}, {x: 3800, y: 2900}, {x: 3400, y: 3700}, {x: 2300, y: 3800},
+      {x: 1800, y: 3100}, {x: 1100, y: 3600}, {x: 650, y: 2800}, {x: 900, y: 1800}, {x: 750, y: 1100}
+    ]
+  },
+  {
+    name: "Monza Temple of Speed",
+    roadWidth: 220,
+    points: [
+      {x: 900, y: 700}, {x: 3500, y: 700}, {x: 3900, y: 1000}, {x: 3700, y: 1600},
+      {x: 2800, y: 1800}, {x: 3500, y: 2400}, {x: 3700, y: 3400}, {x: 3100, y: 3800},
+      {x: 1400, y: 3700}, {x: 900, y: 3200}, {x: 1300, y: 2400}, {x: 750, y: 1600}
+    ]
+  },
+  {
+    name: "Suzuka Figure-8 Crossover",
+    roadWidth: 210,
+    points: [
+      {x: 800, y: 900}, {x: 2000, y: 800}, {x: 2700, y: 1900}, {x: 3700, y: 2300},
+      {x: 3900, y: 3300}, {x: 3000, y: 3800}, {x: 2300, y: 3000}, {x: 2100, y: 1800},
+      {x: 1300, y: 2700}, {x: 650, y: 3300}, {x: 600, y: 2000}
+    ]
+  },
+  {
+    name: "Monaco Harbor Tight",
+    roadWidth: 175,
+    points: [
+      {x: 1100, y: 750}, {x: 2200, y: 700}, {x: 2900, y: 1100}, {x: 3600, y: 900},
+      {x: 3950, y: 1500}, {x: 3300, y: 2000}, {x: 3800, y: 2600}, {x: 3300, y: 3400},
+      {x: 2500, y: 3100}, {x: 2100, y: 3800}, {x: 1200, y: 3600}, {x: 1400, y: 2700},
+      {x: 750, y: 2400}, {x: 850, y: 1500}
+    ]
+  },
+  {
+    name: "Spa-Francorchamps Forest",
+    roadWidth: 235,
+    points: [
+      {x: 1000, y: 800}, {x: 1900, y: 650}, {x: 2400, y: 1200}, {x: 3600, y: 900},
+      {x: 4000, y: 1700}, {x: 3400, y: 2500}, {x: 3750, y: 3400}, {x: 2700, y: 3900},
+      {x: 1900, y: 3300}, {x: 1300, y: 3800}, {x: 650, y: 3100}, {x: 1100, y: 2100}, {x: 700, y: 1400}
+    ]
+  },
+  {
+    name: "Interlagos Technical Twist",
+    roadWidth: 205,
+    points: [
+      {x: 1000, y: 700}, {x: 2800, y: 650}, {x: 3700, y: 1200}, {x: 3500, y: 2100},
+      {x: 2500, y: 1900}, {x: 2100, y: 2500}, {x: 3100, y: 2900}, {x: 3400, y: 3700},
+      {x: 2000, y: 3850}, {x: 1200, y: 3200}, {x: 1600, y: 2300}, {x: 750, y: 1900}, {x: 700, y: 1100}
+    ]
+  },
+  {
+    name: "Nürburgring Endurance Loop",
+    roadWidth: 200,
+    points: [
+      {x: 900, y: 650}, {x: 2100, y: 600}, {x: 2600, y: 1100}, {x: 3500, y: 700},
+      {x: 4050, y: 1300}, {x: 3600, y: 2000}, {x: 4000, y: 2800}, {x: 3500, y: 3750},
+      {x: 2600, y: 3400}, {x: 2100, y: 3950}, {x: 1100, y: 3800}, {x: 650, y: 3000},
+      {x: 1250, y: 2500}, {x: 650, y: 1800}, {x: 1100, y: 1200}
+    ]
+  },
+  {
+    name: "Daytona Tri-Oval Superspeedway",
+    roadWidth: 270,
+    points: [
+      {x: 1200, y: 750}, {x: 2250, y: 950}, {x: 3300, y: 750}, {x: 3950, y: 1400},
+      {x: 3950, y: 2800}, {x: 3300, y: 3650}, {x: 2250, y: 3800}, {x: 1200, y: 3650},
+      {x: 550, y: 2800}, {x: 550, y: 1400}
+    ]
+  },
+  {
+    name: "Laguna Seca Corkscrew",
+    roadWidth: 200,
+    points: [
+      {x: 1100, y: 750}, {x: 2700, y: 750}, {x: 3600, y: 1300}, {x: 3400, y: 2200},
+      {x: 2500, y: 2300}, {x: 2300, y: 2800}, {x: 3100, y: 3200}, {x: 2800, y: 3850},
+      {x: 1400, y: 3700}, {x: 800, y: 2900}, {x: 1200, y: 2000}, {x: 750, y: 1300}
+    ]
+  },
+  {
+    name: "Abu Dhabi Yas Marina",
+    roadWidth: 225,
+    points: [
+      {x: 900, y: 700}, {x: 3300, y: 700}, {x: 3800, y: 1200}, {x: 3100, y: 1700},
+      {x: 3850, y: 2300}, {x: 3700, y: 3400}, {x: 2800, y: 3750}, {x: 2400, y: 3000},
+      {x: 1800, y: 3750}, {x: 900, y: 3600}, {x: 1100, y: 2500}, {x: 650, y: 1800}
+    ]
+  }
 ];
 
-let currentTrackIndex = 0;
-let track = trackList[currentTrackIndex];
+// Catmull-Rom Spline interpolation to turn control points into smooth, dense road points
+function generateSmoothTrack(raw) {
+  const pts = raw.points;
+  const dense = [];
+  const segments = 35; // High resolution for smooth curves & accurate collision
 
-// Car object
+  for (let i = 0; i < pts.length; i++) {
+    const p0 = pts[(i - 1 + pts.length) % pts.length];
+    const p1 = pts[i];
+    const p2 = pts[(i + 1) % pts.length];
+    const p3 = pts[(i + 2) % pts.length];
+
+    for (let t = 0; t < segments; t++) {
+      const s = t / segments;
+      const s2 = s * s;
+      const s3 = s2 * s;
+
+      const x = 0.5 * (
+        (2 * p1.x) +
+        (-p0.x + p2.x) * s +
+        (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * s2 +
+        (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * s3
+      );
+      const y = 0.5 * (
+        (2 * p1.y) +
+        (-p0.y + p2.y) * s +
+        (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * s2 +
+        (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * s3
+      );
+      dense.push({ x, y });
+    }
+  }
+
+  // Calculate starting angle from point 0 to point 1
+  const startAngle = Math.atan2(dense[1].y - dense[0].y, dense[1].x - dense[0].x);
+  return {
+    name: raw.name,
+    roadWidth: raw.roadWidth,
+    points: dense,
+    startX: dense[0].x,
+    startY: dense[0].y,
+    startAngle
+  };
+}
+
+const tracks = rawTracks.map(generateSmoothTrack);
+let currentTrack = tracks[0];
+
+// Car object (tuned for massive high-speed Grand Prix tracks)
 const car = {
-  x: track.startX,
-  y: track.startY,
+  x: currentTrack.startX,
+  y: currentTrack.startY,
   vx: 0,
   vy: 0,
-  angle: 0,
+  angle: currentTrack.startAngle,
   width: 44,
   height: 22,
-  accel: 0.4,
-  maxSpeed: 14,
-  turnSpeed: 0.065,
-  grip: 0.92,
-  friction: 0.985
+  accel: 0.48,
+  maxSpeed: 18,
+  turnSpeed: 0.062,
+  grip: 0.925,
+  friction: 0.988
 };
 
 const skids = [];
 let lap = 1;
 let startTime = Date.now();
 let bestTime = null;
-let passedCheckpoint = false;
+let checkpoint1 = false;
+let checkpoint2 = false;
 
-// Track selection dropdown handler
-const trackSelect = document.getElementById('trackSelect');
-trackSelect.addEventListener('change', (e) => {
-  currentTrackIndex = parseInt(e.target.value);
-  track = trackList[currentTrackIndex];
-  
-  // Reset car position and physics
-  car.x = track.startX;
-  car.y = track.startY;
+function resetCarToTrack() {
+  car.x = currentTrack.startX;
+  car.y = currentTrack.startY;
   car.vx = 0;
   car.vy = 0;
-  car.angle = 0;
-  
-  // Reset lap stats
+  car.angle = currentTrack.startAngle;
+  checkpoint1 = false;
+  checkpoint2 = false;
+  startTime = Date.now();
+  canvas.focus();
+}
+
+document.getElementById('resetBtn').addEventListener('click', resetCarToTrack);
+
+document.getElementById('trackSelect').addEventListener('change', (e) => {
+  currentTrack = tracks[parseInt(e.target.value)];
   lap = 1;
   document.getElementById('lap').innerText = lap;
-  startTime = Date.now();
   bestTime = null;
   document.getElementById('best').innerText = '--';
   skids.length = 0;
-  passedCheckpoint = false;
-  canvas.focus();
+  resetCarToTrack();
 });
+
+// Find closest distance from car to any road spline point
+function getClosestTrackIndex(x, y) {
+  let minDist = Infinity;
+  let closestIdx = 0;
+  const pts = currentTrack.points;
+  for (let i = 0; i < pts.length; i++) {
+    const d = Math.hypot(x - pts[i].x, y - pts[i].y);
+    if (d < minDist) {
+      minDist = d;
+      closestIdx = i;
+    }
+  }
+  return { index: closestIdx, dist: minDist };
+}
 
 function update() {
   const up = keys['KeyW'] || keys['ArrowUp'] || keys['w'];
@@ -172,8 +333,8 @@ function update() {
     if (forwardSpeed > car.maxSpeed) forwardSpeed = car.maxSpeed;
   }
   if (down) {
-    forwardSpeed -= car.accel * 0.7;
-    if (forwardSpeed < -car.maxSpeed * 0.4) forwardSpeed = -car.maxSpeed * 0.4;
+    forwardSpeed -= car.accel * 0.8;
+    if (forwardSpeed < -car.maxSpeed * 0.35) forwardSpeed = -car.maxSpeed * 0.35;
   }
 
   // Steering
@@ -183,48 +344,47 @@ function update() {
   if (right) car.angle += car.turnSpeed * dir;
 
   // Drift physics
-  const currentGrip = handbrake ? 0.94 : car.grip;
+  const currentGrip = handbrake ? 0.945 : car.grip;
   lateralSpeed *= currentGrip;
 
-  // Reconstruct velocity
   car.vx = forwardX * forwardSpeed + rightX * lateralSpeed;
   car.vy = forwardY * forwardSpeed + rightY * lateralSpeed;
 
   car.vx *= car.friction;
   car.vy *= car.friction;
 
-  // Off-road check based on active track dimensions
-  const normDist = Math.hypot((car.x - track.cx) / track.rx, (car.y - track.cy) / track.ry);
-  const trackRadiusAverage = (track.rx + track.ry) / 2;
-  const innerLimit = 1 - (track.roadWidth / 2) / trackRadiusAverage;
-  const outerLimit = 1 + (track.roadWidth / 2) / trackRadiusAverage;
-  const offRoad = normDist < innerLimit || normDist > outerLimit;
+  // Spline road collision check
+  const closest = getClosestTrackIndex(car.x, car.y);
+  const offRoad = closest.dist > (currentTrack.roadWidth / 2);
 
   if (offRoad) {
-    car.vx *= 0.92;
+    car.vx *= 0.92; // Grass drag
     car.vy *= 0.92;
   }
 
   car.x += car.vx;
   car.y += car.vy;
 
-  // Skid marks
-  if ((Math.abs(lateralSpeed) > 2.0 || (handbrake && totalSpeed > 2)) && !offRoad) {
+  // Tire skid marks
+  if ((Math.abs(lateralSpeed) > 2.3 || (handbrake && totalSpeed > 3)) && !offRoad) {
     const rearX = car.x - forwardX * 16;
     const rearY = car.y - forwardY * 16;
     skids.push({
       x1: rearX + rightX * 8, y1: rearY + rightY * 8,
       x2: rearX - rightX * 8, y2: rearY - rightY * 8
     });
-    if (skids.length > 400) skids.shift();
+    if (skids.length > 600) skids.shift();
   }
 
-  // Lap logic (Checkpoint at bottom, finish line at top)
-  if (car.y > track.cy + (track.ry * 0.5) && Math.abs(car.x - track.cx) < track.rx * 0.3) {
-    passedCheckpoint = true;
-  }
-  if (passedCheckpoint && car.y < track.cy - (track.ry * 0.5) && Math.abs(car.x - track.cx) < track.rx * 0.2) {
-    passedCheckpoint = false;
+  // Multi-sector Lap Logic (prevents shortcutting across tracks)
+  const totalPts = currentTrack.points.length;
+  const progress = closest.index / totalPts;
+
+  if (progress > 0.3 && progress < 0.45) checkpoint1 = true;
+  if (checkpoint1 && progress > 0.65 && progress < 0.8) checkpoint2 = true;
+  if (checkpoint1 && checkpoint2 && (progress > 0.95 || progress < 0.05) && closest.dist < currentTrack.roadWidth) {
+    checkpoint1 = false;
+    checkpoint2 = false;
     const lapTime = ((Date.now() - startTime) / 1000).toFixed(2);
     if (!bestTime || parseFloat(lapTime) < parseFloat(bestTime)) {
       bestTime = lapTime;
@@ -236,58 +396,75 @@ function update() {
   }
 
   document.getElementById('time').innerText = ((Date.now() - startTime) / 1000).toFixed(2);
-  document.getElementById('speed').innerText = Math.round(totalSpeed * 11);
+  document.getElementById('speed').innerText = Math.round(totalSpeed * 11.5);
 }
 
 function drawTrack() {
+  // Huge 4600 x 4600 grassy infield/outfield
   ctx.fillStyle = '#2d5a27';
-  ctx.fillRect(0, 0, 2000, 2000);
+  ctx.fillRect(0, 0, 4600, 4600);
 
+  // Subtle grass mowing stripes/grid for speed sensation
   ctx.strokeStyle = '#264d21';
   ctx.lineWidth = 2;
-  for (let i = 0; i <= 2000; i += 100) {
-    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 2000); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(2000, i); ctx.stroke();
+  for (let i = 0; i <= 4600; i += 150) {
+    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 4600); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(4600, i); ctx.stroke();
   }
 
-  // Outer rumble strip
-  ctx.beginPath();
-  ctx.ellipse(track.cx, track.cy, track.rx, track.ry, 0, 0, Math.PI * 2);
-  ctx.lineWidth = track.roadWidth + 24;
+  const pts = currentTrack.points;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  // Helper to trace the spline path
+  function traceCircuit() {
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(pts[i].x, pts[i].y);
+    }
+    ctx.closePath();
+  }
+
+  // 1. Outer Red/White Curbs (Rumble Strips)
+  traceCircuit();
+  ctx.lineWidth = currentTrack.roadWidth + 28;
   ctx.strokeStyle = '#d93829';
   ctx.stroke();
 
-  ctx.setLineDash([30, 30]);
+  ctx.setLineDash([35, 35]);
   ctx.strokeStyle = '#ffffff';
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Asphalt road
-  ctx.beginPath();
-  ctx.ellipse(track.cx, track.cy, track.rx, track.ry, 0, 0, Math.PI * 2);
-  ctx.lineWidth = track.roadWidth;
+  // 2. Main Asphalt Surface
+  traceCircuit();
+  ctx.lineWidth = currentTrack.roadWidth;
   ctx.strokeStyle = '#33363b';
   ctx.stroke();
 
-  // Center dashed line
-  ctx.beginPath();
-  ctx.ellipse(track.cx, track.cy, track.rx, track.ry, 0, 0, Math.PI * 2);
+  // 3. Center Racing Line
+  traceCircuit();
   ctx.lineWidth = 4;
-  ctx.setLineDash([25, 25]);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+  ctx.setLineDash([30, 30]);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Start/Finish line
-  const finishY = track.cy - track.ry;
-  ctx.fillStyle = '#ffffff';
-  for (let row = 0; row < 2; row++) {
-    for (let col = 0; col < 11; col++) {
-      if ((row + col) % 2 === 0) {
-        ctx.fillRect(track.cx - 10 + row * 10, finishY - (track.roadWidth / 2) + col * 20, 10, 20);
-      }
+  // 4. Checkered Start/Finish Line rotated perpendicular to start angle
+  ctx.save();
+  ctx.translate(currentTrack.startX, currentTrack.startY);
+  ctx.rotate(currentTrack.startAngle);
+  const halfW = currentTrack.roadWidth / 2;
+  const sqSize = 15;
+  const rows = Math.floor(currentTrack.roadWidth / sqSize);
+  for (let c = 0; c < 2; c++) {
+    for (let r = 0; r < rows; r++) {
+      ctx.fillStyle = (r + c) % 2 === 0 ? '#ffffff' : '#111111';
+      ctx.fillRect(c * sqSize - sqSize, -halfW + r * sqSize, sqSize, sqSize);
     }
   }
+  ctx.restore();
 }
 
 function drawCar() {
@@ -295,8 +472,8 @@ function drawCar() {
   ctx.translate(car.x, car.y);
   ctx.rotate(car.angle);
 
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-  ctx.fillRect(-car.width / 2 + 4, -car.height / 2 + 4, car.width, car.height);
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+  ctx.fillRect(-car.width / 2 + 5, -car.height / 2 + 5, car.width, car.height);
 
   ctx.fillStyle = '#111';
   ctx.fillRect(-16, -13, 10, 4);
@@ -323,6 +500,48 @@ function drawCar() {
   ctx.restore();
 }
 
+// Live Minimap in top-right corner so you can see upcoming hairpins
+function drawMinimap() {
+  const mapSize = 190;
+  const padding = 20;
+  const mapX = canvas.width - mapSize - padding;
+  const mapY = padding;
+  const scale = mapSize / 4600;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(mapX, mapY, mapSize, mapSize, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  // Draw track outline on minimap
+  const pts = currentTrack.points;
+  ctx.beginPath();
+  ctx.moveTo(mapX + pts[0].x * scale, mapY + pts[0].y * scale);
+  for (let i = 1; i < pts.length; i++) {
+    ctx.lineTo(mapX + pts[i].x * scale, mapY + pts[i].y * scale);
+  }
+  ctx.closePath();
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 6;
+  ctx.stroke();
+
+  // Start line marker
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(mapX + currentTrack.startX * scale - 3, mapY + currentTrack.startY * scale - 3, 6, 6);
+
+  // Live player dot
+  ctx.fillStyle = '#ff3b30';
+  ctx.beginPath();
+  ctx.arc(mapX + car.x * scale, mapY + car.y * scale, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -339,6 +558,8 @@ function draw() {
 
   drawCar();
   ctx.restore();
+
+  drawMinimap();
 }
 
 function loop() {
